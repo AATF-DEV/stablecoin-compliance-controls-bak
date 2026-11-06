@@ -113,7 +113,7 @@ contract Bridge is Test {
     function _fastSigs(Net memory c, bytes memory data) internal returns (bytes memory sigs, uint256 dl) {
         _on(c);
         dl = block.timestamp + 1 hours;
-        sigs = _sign(c.a.digest(address(c.t), data, EV, c.a.nonce(), dl), _fastKeys());
+        sigs = _sign(c.a.fastDigest(address(c.t), data, EV, c.a.nonce(), dl), _fastKeys());
     }
 
     function _fast(Net memory c, bytes memory data) internal {

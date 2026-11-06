@@ -196,6 +196,22 @@ contract Security is Test {
         new EnforcedToken(address(a), zero);
     }
 
+    /// Address 0 marks an absent hold record, so a hold on it could never be released or seized and
+    /// its id could be reused. Even with a balance at address 0 (a transfer to it), the hold is refused.
+    function test_holdNeverOnZeroAddress() public {
+        vm.prank(alice);
+        t.transfer(address(0), 100);
+        bytes memory data = abi.encodeCall(EnforcedToken.placeHold, (keccak256("z"), address(0), 60, EV));
+        bytes memory sg = _sigs(data, a.nonce(), _two());
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ComplianceAuthority.CallFailed.selector, abi.encodeWithSelector(EnforcedToken.ZeroAccount.selector)
+            )
+        );
+        a.execute(address(t), data, EV, block.timestamp + 1, sg);
+        assertEq(t.heldOf(address(0)), 0);
+    }
+
     function test_seizeRequiresHold() public {
         bytes memory data = abi.encodeCall(EnforcedToken.seize, (keccak256("none"), 1, bob, EV));
         bytes memory sg = _sigs(data, a.nonce(), _two());

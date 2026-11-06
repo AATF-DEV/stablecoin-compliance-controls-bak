@@ -95,14 +95,14 @@ contract Tiered is Test {
 
     function _fastTo(address target, bytes memory data, uint256[] memory keys) internal returns (bytes memory) {
         uint256 dl = block.timestamp + 1 hours;
-        bytes32 d = a.digest(target, data, EV, a.nonce(), dl);
+        bytes32 d = a.fastDigest(target, data, EV, a.nonce(), dl);
         return a.execute(target, data, EV, dl, _sign(d, keys));
     }
 
     /// Expect the fast tier to reject: sign first, so expectRevert applies to execute() itself.
     function _fastReverts(address target, bytes memory data, uint256[] memory keys, bytes memory err) internal {
         uint256 dl = block.timestamp + 1 hours;
-        bytes memory sigs = _sign(a.digest(target, data, EV, a.nonce(), dl), keys);
+        bytes memory sigs = _sign(a.fastDigest(target, data, EV, a.nonce(), dl), keys);
         if (err.length == 0) vm.expectRevert();
         else vm.expectRevert(err);
         a.execute(target, data, EV, dl, sigs);
@@ -169,7 +169,7 @@ contract Tiered is Test {
     function test_fastEmitsApprovers() public {
         bytes memory data = _status(alice, 1);
         uint256 dl = block.timestamp + 1;
-        bytes32 d = a.digest(address(t), data, EV, a.nonce(), dl);
+        bytes32 d = a.fastDigest(address(t), data, EV, a.nonce(), dl);
         address[] memory who = new address[](2);
         (who[0], who[1]) = (vm.addr(spk[0]), vm.addr(spk[3]));
         if (who[1] < who[0]) (who[0], who[1]) = (who[1], who[0]);
@@ -191,7 +191,7 @@ contract Tiered is Test {
         ];
         for (uint256 i; i < bad.length; ++i) {
             uint256 dl = block.timestamp + 1;
-            bytes32 d = a.digest(address(t), bad[i], EV, a.nonce(), dl);
+            bytes32 d = a.fastDigest(address(t), bad[i], EV, a.nonce(), dl);
             bytes memory sigs = _sign(d, _s(0, 1, 3)); // even a slow-tier quorum cannot use the fast tier
             vm.expectRevert(TieredAuthority.NotRestrictive.selector);
             a.execute(address(t), bad[i], EV, dl, sigs);
@@ -235,13 +235,13 @@ contract Tiered is Test {
     function test_fastRejectsReplayAndDuplicates() public {
         bytes memory data = _status(alice, 1);
         uint256 dl = block.timestamp + 1;
-        bytes32 d = a.digest(address(t), data, EV, a.nonce(), dl);
+        bytes32 d = a.fastDigest(address(t), data, EV, a.nonce(), dl);
         bytes memory sigs = _sign(d, _s(0, 1));
         a.execute(address(t), data, EV, dl, sigs);
         vm.expectRevert();
         a.execute(address(t), data, EV, dl, sigs);
 
-        bytes32 d2 = a.digest(address(t), _status(bob, 1), EV, a.nonce(), dl);
+        bytes32 d2 = a.fastDigest(address(t), _status(bob, 1), EV, a.nonce(), dl);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(spk[0], d2);
         bytes memory dup = bytes.concat(abi.encodePacked(r, s, v), abi.encodePacked(r, s, v));
         vm.expectRevert(TieredAuthority.SignersNotAscending.selector);
@@ -251,7 +251,7 @@ contract Tiered is Test {
     function test_deadline() public {
         bytes memory data = _status(alice, 1);
         uint256 dl = block.timestamp - 1;
-        bytes32 d = a.digest(address(t), data, EV, a.nonce(), dl);
+        bytes32 d = a.fastDigest(address(t), data, EV, a.nonce(), dl);
         bytes memory sigs = _sign(d, _s(0, 1));
         vm.expectRevert(TieredAuthority.Expired.selector);
         a.execute(address(t), data, EV, dl, sigs);
@@ -527,13 +527,30 @@ contract Tiered is Test {
         assertEq(b.token(), address(own));
     }
 
+    /// A fast-tier approval cannot be routed into the slow tier (delaying the action and consuming
+    /// the nonce), and a slow-tier approval cannot be executed immediately.
+    function test_signaturesBoundToTier() public {
+        bytes memory data = _status(alice, 1);
+        uint256 dl = block.timestamp + 1 hours;
+        uint256 n = a.nonce();
+        bytes memory fastSigs = _sign(a.fastDigest(address(t), data, EV, n, dl), _s(0, 1, 3));
+        vm.expectRevert();
+        a.queue(address(t), data, EV, dl, fastSigs);
+        bytes memory slowSigs = _sign(a.digest(address(t), data, EV, n, dl), _s(0, 1, 3));
+        vm.expectRevert();
+        a.execute(address(t), data, EV, dl, slowSigs);
+        assertEq(a.nonce(), n);
+        a.execute(address(t), data, EV, dl, fastSigs);
+        assertEq(t.statusOf(alice), 1);
+    }
+
     function test_signatureNotValidAfterChainIdChange() public {
         bytes memory data = _status(alice, 1);
         uint256 dl = block.timestamp + 1;
-        bytes32 d = a.digest(address(t), data, EV, a.nonce(), dl);
+        bytes32 d = a.fastDigest(address(t), data, EV, a.nonce(), dl);
         bytes memory sigs = _sign(d, _s(0, 1));
         vm.chainId(block.chainid + 1); // e.g. the other side of a fork
-        assertTrue(a.digest(address(t), data, EV, a.nonce(), dl) != d);
+        assertTrue(a.fastDigest(address(t), data, EV, a.nonce(), dl) != d);
         vm.expectRevert();
         a.execute(address(t), data, EV, dl, sigs);
     }

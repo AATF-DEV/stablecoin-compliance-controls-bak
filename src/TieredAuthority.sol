@@ -40,8 +40,14 @@ interface IEnforcedToken {
 ///      enrollment auditable. `_recover` is virtual so that the symbolic proofs can abstract it.
 contract TieredAuthority {
     // ------------------------------------------------------------------ constants
-    bytes32 public constant ACTION_TYPEHASH = keccak256(
-        "ComplianceAction(address target,bytes32 dataHash,bytes32 evidenceHash,uint256 nonce,uint256 deadline)"
+    /// Signers commit to the tier: a fast-tier approval cannot be submitted to the slow tier (where it
+    /// would be delayed and consume the nonce) and a slow-tier approval cannot bypass the delay.
+    /// The calldata is typed as `bytes data`, so a wallet receives the full calldata, not only its hash.
+    bytes32 public constant FAST_TYPEHASH = keccak256(
+        "FastAction(address target,bytes data,bytes32 evidenceHash,uint256 nonce,uint256 deadline)"
+    );
+    bytes32 public constant QUEUED_TYPEHASH = keccak256(
+        "QueuedAction(address target,bytes data,bytes32 evidenceHash,uint256 nonce,uint256 deadline)"
     );
     bytes32 public constant CANCEL_TYPEHASH = keccak256("CancelAction(bytes32 actionId)");
     uint256 public constant GRACE = 14 days; // a queued action expires if not executed in time
@@ -190,12 +196,33 @@ contract TieredAuthority {
         );
     }
 
+    /// @notice Digest a slow-tier quorum signs for `queue`; it is also the queued action's id.
     function digest(address target, bytes calldata data, bytes32 evidenceHash, uint256 n, uint256 deadline)
         public
         view
         returns (bytes32)
     {
-        bytes32 structHash = keccak256(abi.encode(ACTION_TYPEHASH, target, keccak256(data), evidenceHash, n, deadline));
+        return _digest(QUEUED_TYPEHASH, target, data, evidenceHash, n, deadline);
+    }
+
+    /// @notice Digest a fast-tier quorum signs for `execute`.
+    function fastDigest(address target, bytes calldata data, bytes32 evidenceHash, uint256 n, uint256 deadline)
+        public
+        view
+        returns (bytes32)
+    {
+        return _digest(FAST_TYPEHASH, target, data, evidenceHash, n, deadline);
+    }
+
+    function _digest(
+        bytes32 typehash,
+        address target,
+        bytes calldata data,
+        bytes32 evidenceHash,
+        uint256 n,
+        uint256 deadline
+    ) internal view returns (bytes32) {
+        bytes32 structHash = keccak256(abi.encode(typehash, target, keccak256(data), evidenceHash, n, deadline));
         return keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR(), structHash));
     }
 
@@ -212,7 +239,7 @@ contract TieredAuthority {
         if (block.timestamp > deadline) revert Expired();
         Policy memory p = policy;
         uint256 n = nonce;
-        bytes32 id = digest(target, data, evidenceHash, n, deadline);
+        bytes32 id = fastDigest(target, data, evidenceHash, n, deadline);
         nonce = n + 1;
         address[] memory who = _quorum(id, sigs, p.mR, p.rolesR);
 

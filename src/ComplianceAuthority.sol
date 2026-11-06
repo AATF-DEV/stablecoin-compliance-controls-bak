@@ -3,7 +3,8 @@ pragma solidity 0.8.28;
 
 /// @title ComplianceAuthority
 /// @notice M-of-N quorum gate for compliance actions (CO-8).
-///         Signers authorize an EIP-712 digest binding the target, the exact calldata,
+///         Signers authorize an EIP-712 digest binding the target, the exact calldata (typed as
+///         `bytes data`, so a wallet receives the full calldata rather than only its hash),
 ///         an evidence hash (pointer to the lawful order / case file, CO-6), a nonce
 ///         (replay protection) and a deadline. Signatures must be supplied in strictly
 ///         ascending signer-address order, which rejects duplicates in O(M).
@@ -11,7 +12,7 @@ pragma solidity 0.8.28;
 ///      operational property that this contract cannot observe.
 contract ComplianceAuthority {
     bytes32 public constant ACTION_TYPEHASH = keccak256(
-        "ComplianceAction(address target,bytes32 dataHash,bytes32 evidenceHash,uint256 nonce,uint256 deadline)"
+        "ComplianceAction(address target,bytes data,bytes32 evidenceHash,uint256 nonce,uint256 deadline)"
     );
     bytes32 public immutable DOMAIN_SEPARATOR;
 

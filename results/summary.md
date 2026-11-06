@@ -34,38 +34,38 @@ Marginal cost from a least-squares fit over K ∈ [500, 1000]; max K is where th
 
 | Design | K = 1 | Marginal per address | Max. K under 2²⁴ | Measured K above the cap |
 |---|---:|---:|---:|---|
-| Separate mapping | 73,653 | 24,282 | ≈688 | 750, 1,000 |
+| Separate mapping | 73,641 | 24,282 | ≈688 | 750, 1,000 |
 | Packed, zero-balance targets | 86,045 | 23,119 | ≈723 | 750, 1,000 |
-| Packed, funded targets | 68,945 | 6,019 | ≈2,777 (extrapolated) | none |
-| SMT root | 55,451 | ≈0 (55,439–55,463 for every K) | unbounded | none |
+| Packed, funded targets | 68,957 | 6,019 | ≈2,777 (extrapolated) | none |
+| SMT root | 55,439 | ≈0 (55,439–55,463 for every K) | unbounded | none |
 
 ## Quorum size, freezing a zero-balance account (Table 6)
 
 | Authorization | Tx gas |
 |---|---:|
 | Single key | 57,611 |
-| 1-of-3 | 78,419 |
-| 2-of-4 | 85,157 |
+| 1-of-3 | 78,407 |
+| 2-of-4 | 85,169 |
 | 3-of-5 | 91,931 |
 | 4-of-6 | 98,658 |
-| 5-of-7 | 105,432 |
+| 5-of-7 | 105,444 |
 
-- Fixed quorum overhead (1-of-3 minus single key): 20,808 gas.
-- Per additional signer: 6,738, 6,774, 6,727, 6,774 (mean 6,753).
-- 2-of-N minus single key: 27,546 gas.
+- Fixed quorum overhead (1-of-3 minus single key): 20,796 gas.
+- Per additional signer: 6,762, 6,762, 6,727, 6,786 (mean 6,759).
+- 2-of-N minus single key: 27,558 gas.
 
 ## Enforcement lifecycle on a funded account, 2-of-3 quorum (Table 7)
 
 | Action | Tx gas |
 |---|---:|
-| Freeze | 68,081 |
-| Hold (place) | 91,752 |
+| Freeze | 68,093 |
+| Hold (place) | 91,799 |
 | Seize (full hold) | 75,476 |
-| Burn (partial hold) | 81,941 |
+| Burn (partial hold) | 81,953 |
 | Release | 64,142 |
 | Unfreeze | 68,069 |
 
-- Hold then seize: 167,228 gas.
+- Hold then seize: 167,275 gas.
 - Freezing a zero-balance account (2-of-4, Table 6) minus a funded one (2-of-3): 17,076 gas, of which 17,100 execution gas and -24 intrinsic (calldata) gas.
   Mixing N = 4 and N = 3 is sound: verification cost depends on M only, and the execution difference is that of a zero-to-non-zero versus a non-zero-to-non-zero storage write (20,000 − 2,900 = 17,100).
 
@@ -75,16 +75,16 @@ Fast tier 2-of-5, slow tier 3-of-5 over two roles, guardians 2-of-3; single-thre
 
 | Action | TieredAuthority | ComplianceAuthority | Difference |
 |---|---:|---:|---:|
-| Freeze, zero-balance account (fast) | 104,531 | 85,157 | +19,374 |
-| Freeze, funded account (fast) | 87,443 | 68,081 | +19,362 |
-| Place hold (fast) | 109,659 | 91,752 | +17,907 |
-| Seize full hold (slow: queue + execute) | 88,584 + 60,713 = 149,297 | 75,476 | 1.98× |
-| Unfreeze (slow: queue + execute) | 88,027 + 52,914 = 140,941 | 68,069 | 2.07× |
-| Guardian cancellation | 37,440 | — | — |
+| Freeze, zero-balance account (fast) | 104,612 | 85,169 | +19,443 |
+| Freeze, funded account (fast) | 87,524 | 68,093 | +19,431 |
+| Place hold (fast) | 109,751 | 91,799 | +17,952 |
+| Seize full hold (slow: queue + execute) | 88,641 + 60,804 = 149,445 | 75,476 | 1.98× |
+| Unfreeze (slow: queue + execute) | 88,108 + 53,005 = 141,113 | 68,069 | 2.07× |
+| Guardian cancellation | 37,476 | — | — |
 
-- Fast-tier extra cost: 17,907–19,374 gas.
+- Fast-tier extra cost: 17,952–19,443 gas.
 - Zero-balance minus funded fast-tier freeze, one signer set: 17,088 gas, of which 17,100 execution gas.
-- Hold then seize through the tiers: 258,956 gas.
+- Hold then seize through the tiers: 259,196 gas.
 
 ## Bridging (Section 6.4, Bridging)
 
@@ -93,7 +93,7 @@ Fast tier 2-of-5, slow tier 3-of-5 over two roles, guardians 2-of-3; single-thre
 | Bridge-out through the adapter (burn) | 56,349 |
 | Bridge-in through the adapter (mint) | 47,552 |
 | Plain transfer on the bridged token | 35,034 |
-| Fast-tier bridge shutdown, 2-of-5 | 97,953 |
+| Fast-tier bridge shutdown, 2-of-5 | 98,034 |
 
 - Transfer on the bridged token equals the packed design: yes.
 

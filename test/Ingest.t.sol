@@ -85,10 +85,9 @@ contract Ingest is Test {
             string memory tier = vm.parseJsonString(m, string.concat(b, ".tier"));
             uint256 dl = block.timestamp + 1 hours;
             uint256 n = a.nonce();
-            bytes32 d = a.digest(address(t), data, e, n, dl);
             uint256 before = t.logCount();
             if (keccak256(bytes(tier)) == keccak256("fast")) {
-                bytes memory sigs = _sigs(d, 2);
+                bytes memory sigs = _sigs(a.fastDigest(address(t), data, e, n, dl), 2);
                 a.execute(address(t), data, e, dl, sigs);
                 uint256 g = _txGas(vm.lastCallGas());
                 uint256 est = vm.parseJsonUint(m, string.concat(b, ".estimatedTxGas"));
@@ -96,7 +95,7 @@ contract Ingest is Test {
                 assertLt(g, TX_CAP);
                 if (g > maxGas) maxGas = g;
             } else {
-                bytes memory sigs = _sigs(d, 3);
+                bytes memory sigs = _sigs(a.digest(address(t), data, e, n, dl), 3);
                 a.queue(address(t), data, e, dl, sigs);
                 vm.warp(block.timestamp + 1 days);
                 a.executeQueued(address(t), data, e, n, dl);
@@ -120,7 +119,7 @@ contract Ingest is Test {
         bytes32 e = bytes32(uint256(1));
         bytes memory data = abi.encodeCall(EnforcedToken.blockBatch, (w, e));
         uint256 dl = block.timestamp + 1 hours;
-        bytes memory sg = _sigs(a.digest(address(t), data, e, a.nonce(), dl), 2);
+        bytes memory sg = _sigs(a.fastDigest(address(t), data, e, a.nonce(), dl), 2);
         a.execute(address(t), data, e, dl, sg);
         uint256 cold = _txGas(vm.lastCallGas());
         uint256 g1 = _apply("data/ingest/v1/manifest.json");

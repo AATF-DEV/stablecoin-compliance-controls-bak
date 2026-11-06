@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Non-vacuity check for the Halmos proofs.
 
-Injects bugs one at a time (seventeen into src/EnforcedToken.sol, twelve into
+Injects bugs one at a time (eighteen into src/EnforcedToken.sol, twelve into
 src/BridgedEnforcedToken.sol, twenty-five into src/TieredAuthority.sol),
 runs the relevant Halmos check, and requires a counterexample. The original sources are always
 restored, even on error.
@@ -75,6 +75,8 @@ MUTANTS = [
     (TOKEN, "address 0 can become a custody account", "check_setCustody",
      "        if (a == address(0)) revert NotCustody(address(0));\n        isCustody[a] = allowed;",
      "        isCustody[a] = allowed;"),
+    (TOKEN, "hold on address 0", "check_placeHold",
+     "        if (a == address(0)) revert ZeroAccount();\n", ""),
     (TOKEN, "custody change not logged", "check_setCustody",
      "        _log(A_CUSTODY, keccak256(abi.encode(a, allowed)), evidenceHash);\n", ""),
     # ---- BridgedEnforcedToken (ERC-7281 bridge interface, Sections 4.1 and 5.6)

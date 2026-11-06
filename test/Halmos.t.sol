@@ -201,6 +201,7 @@ contract HalmosProofs is SymTest, Test {
         bool ok = _call(AUTH, abi.encodeCall(EnforcedToken.placeHold, (id, a, amt, ev)));
         if (!ok) return;
 
+        assert(a != address(0)); // address 0 marks an absent record: a hold on it could never be undone
         assert(h0a == address(0)); // a hold id is never reused while active
         assert(amt <= a0.bal - a0.held); // only spendable value can be held
         (address h1a, uint96 h1v) = t.holds(id);

@@ -430,7 +430,7 @@ contract Bench is Test {
         returns (bytes memory)
     {
         uint256 dl = block.timestamp + 1 hours;
-        bytes32 d = a.digest(tgt, data, EV, a.nonce(), dl);
+        bytes32 d = a.fastDigest(tgt, data, EV, a.nonce(), dl);
         return abi.encodeCall(TieredAuthority.execute, (tgt, data, EV, dl, _sortedSigs(d, keys)));
     }
 

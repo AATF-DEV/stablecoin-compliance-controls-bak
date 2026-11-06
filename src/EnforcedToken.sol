@@ -72,6 +72,7 @@ contract EnforcedToken {
     error BadStatus();
     error Overflow();
     error NotCustody(address account);
+    error ZeroAccount();
 
     modifier onlyAuthority() {
         if (msg.sender != authority) revert NotAuthority();
@@ -175,6 +176,8 @@ contract EnforcedToken {
 
     /// @notice PREVENT TRANSFER: reserve `amt` of `a`'s spendable balance under hold `id`.
     function placeHold(bytes32 id, address a, uint96 amt, bytes32 evidenceHash) external onlyAuthority {
+        // address 0 marks an absent hold record, so a hold on it could never be released or seized
+        if (a == address(0)) revert ZeroAccount();
         if (holds[id].account != address(0)) revert HoldExists();
         Account storage x = _acct[a];
         if (uint256(x.held) + amt > x.balance) revert HoldExceedsSpendable();

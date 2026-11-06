@@ -73,7 +73,7 @@ Account states:
 ### One compliance action
 
 1. **Proposal.** Off-chain, the action is fixed as `(target, calldata, e)`, where `e` is the hash of its evidence bundle: the lawful order and its review, or the evidence hash a list update from the ingestion tool carries.
-2. **Signing.** Each signer computes `digest(target, calldata, e, nonce, deadline)` on the authority. This is an EIP-712 digest whose domain binds the chain id and the authority's address, so a signature is valid for one action on one chain and one contract. The 65-byte `(r, s, v)` signatures are concatenated in ascending order of signer address.
+2. **Signing.** Each signer computes the EIP-712 digest of `(target, calldata, e, nonce, deadline)` on the authority. The calldata is typed as `bytes data`, so a wallet that signs typed data receives the full calldata, not only its hash; showing it decoded still needs per-action types or clear-signing metadata. The domain binds the chain id and the authority's address, so a signature is valid for one action on one chain and one contract. `TieredAuthority` uses two struct types: a fast-tier approval (`fastDigest`, struct `FastAction`) cannot be submitted to `queue`, and a slow-tier approval (`digest`, struct `QueuedAction`, which is also the queued action's id) cannot be executed immediately. The 65-byte `(r, s, v)` signatures are concatenated in ascending order of signer address.
 3. **Submission.** Anyone can submit the signatures:
    - `ComplianceAuthority.execute(...)` checks M signatures and calls the token;
    - `TieredAuthority.execute(...)` (fast tier) checks M_r signatures and the classification, and calls the token at once;
@@ -137,15 +137,17 @@ Proved with Halmos (`test/TieredHalmos.t.sol`, `halmos --contract TieredProofs -
 - **T6** seized plus burned value never exceeds the per-epoch value budget, whatever the target: the bound token, a token not yet bound, or any other contract;
 - **T7** configuration changes only through the authority itself and always leaves a valid policy; signers and guardians stay disjoint; and the signer, role and guardian counters behind the policy bounds change exactly with the membership they count, so the bounds refer to the real signer and guardian sets.
 
-Unit tests (`test/Tiered.t.sol`, 26 tests) cover each tier boundary, adding and removing custody accounts, delay and grace, cancellation, both budgets and raising them, the value budget for a second or not-yet-bound token, rotation with attestation hashes, role coverage, disjointness, token binding, and signatures after a chain-id change.
+Unit tests (`test/Tiered.t.sol`, 27 tests) cover each tier boundary, adding and removing custody accounts, delay and grace, cancellation, both budgets and raising them, the value budget for a second or not-yet-bound token, rotation with attestation hashes, role coverage, disjointness, token binding, signatures bound to their tier, and signatures after a chain-id change.
 
 ## Cross-chain bridging
 
 `BridgedEnforcedToken` implements the bridge-facing part of ERC-7281 (xERC20). ERC-7281 is a draft: its specification is in an unmerged pull request to the ERC repository ([ethereum/ERCs#89](https://github.com/ethereum/ERCs/pull/89)), and it is discussed on [Ethereum Magicians](https://ethereum-magicians.org/t/erc-7281-sovereign-bridged-tokens/14979). The issuer deploys one canonical token per chain, and allow-listed bridges burn on the source chain and mint on the destination. No collateral is locked and no wrapped token is created, so value on every chain stays under the issuer's controls.
 
+The draft also defines a Lockbox, which wraps an existing token into its XERC20 form. A lockbox puts the wrapped supply outside the original token's controls, so this design requires native deployment on every chain (the draft's own recommendation for a token that does not exist yet) and implements no lockbox. `BridgedEnforcedToken` is the bridge-facing subset of `IXERC20`, not a full implementation: `mint`/`burn`, the four limit views and the `BridgeLimitsSet` event match the draft; `setLimits` is called by the compliance authority and takes an evidence hash; there is no `setLockbox`; and primary issuance by the `minter` is not rate-limited.
+
 - **Bridge-out** (`burn`) applies the outbound-transfer rules: the holder must be `ACTIVE`, only the spendable balance can leave (held value stays), and a `BLOCKED` bridge cannot burn.
 - **Bridge-in** (`mint` by a bridge) applies the inbound-transfer rule: no minting to a `BLOCKED` account. A `FROZEN` account can still receive. A `BLOCKED` bridge cannot mint, so blocking a bridge shuts it in both directions.
-- **Rate limits.** Each bridge has a minting limit and a burning limit that refill linearly over one day, as in ERC-7281. They bound what a compromised bridge or relayer can mint. Limits are set only by the authority, and each change is logged in the compliance hash chain.
+- **Rate limits.** Each bridge has a minting limit and a burning limit that refill linearly over one day, as in the ERC-7281 reference implementation (the draft text does not fix the duration). They bound what a compromised bridge or relayer can mint. Limits are set only by the authority, and each change is logged in the compliance hash chain.
 - **Changing limits through the tiered authority.** Lowering a limit, for example to 0 to shut a compromised bridge, is a fast-tier action. Raising one is a slow-tier action.
 
 ERC-7281 does not synchronize restrictions across chains. Each chain therefore has its own `TieredAuthority` with the same signer set, and signers sign one action per chain. The EIP-712 domain binds the chain id and the authority's address, so a signature cannot be replayed on another chain. The two-chain tests (`test/Bridge.t.sol`, 17 tests; chains simulated by switching `block.chainid`) show the following:
@@ -248,12 +250,12 @@ Proved symbolically with [Halmos](https://github.com/a16z/halmos) (`test/Halmos.
 
 The Halmos checks make the token's entire storage symbolic, so they quantify over all contract states. Each check assumes the invariant for the accounts a call touches, runs one public function with symbolic arguments and caller, and asserts that the invariant still holds and that state changed exactly as specified, including frame conditions that an arbitrary untouched account, an arbitrary other hold record, an arbitrary other allowance entry and an arbitrary other custody-list entry are unchanged. `setCustody` changes exactly one entry (never for address 0) and is logged. Allowance bookkeeping is specified exactly: `transferFrom` spends exactly the amount of a finite allowance and keeps an infinite one, and `approve` sets exactly one entry. Every state-changing public function is covered (`transfer`, `transferFrom`, `approve`, `mint`, `setStatus`, `blockBatch`, `placeHold`, `releaseHold`, `seize`, `burnFromHold`, `setCustody`), and non-authorized callers are proved to be rejected by every compliance function, including `blockBatch` and `setCustody`. Starting from the initial state (no balances, holds or log entries; only the deployment's custody list), this is an inductive proof over all call sequences for invariants 1–4 and 6; each check also asserts that supply and the compliance log change only as specified (non-compliance calls leave the log untouched, and every compliance action appends exactly the specified entry to the head). For invariant 5, Halmos proves the token side (no caller other than the authority can change compliance state); signature verification in `ComplianceAuthority` is covered by unit tests only. `blockBatch` is checked for batches of one or two addresses.
 
-`scripts/mutation_check.py` confirms the proofs are not vacuous: it injects 54 bugs one at a time: seventeen into `EnforcedToken` (a frozen sender allowed to transfer; seizure not reducing the held amount; burning not reducing supply; holds not bounded by the spendable balance; a seizure that deletes a different hold record; `blockBatch` wiping the account's balance; an ordinary transfer advancing the compliance log; `blockBatch` callable without the authority; a seizure logged without its evidence hash; a release logged under the wrong action tag; three allowance errors in `transferFrom` and `approve`; four custody-list errors), twelve into `BridgedEnforcedToken` (each of B1–B3 has at least one, including two allowance errors in bridge-out), and twenty-five into `TieredAuthority` (each of T1–T7 has at least one, including a fast tier that accepts adding a custody account, a `blockBatch` charged as a single account, a value budget that counts only the bound token, three role-coverage errors, and four errors in the signer, role and guardian counters), and requires a Halmos counterexample for each.
+`scripts/mutation_check.py` confirms the proofs are not vacuous: it injects 55 bugs one at a time: eighteen into `EnforcedToken` (a frozen sender allowed to transfer; a hold on address 0; seizure not reducing the held amount; burning not reducing supply; holds not bounded by the spendable balance; a seizure that deletes a different hold record; `blockBatch` wiping the account's balance; an ordinary transfer advancing the compliance log; `blockBatch` callable without the authority; a seizure logged without its evidence hash; a release logged under the wrong action tag; three allowance errors in `transferFrom` and `approve`; four custody-list errors), twelve into `BridgedEnforcedToken` (each of B1–B3 has at least one, including two allowance errors in bridge-out), and twenty-five into `TieredAuthority` (each of T1–T7 has at least one, including a fast tier that accepts adding a custody account, a `blockBatch` charged as a single account, a value budget that counts only the bound token, three role-coverage errors, and four errors in the signer, role and guardian counters), and requires a Halmos counterexample for each.
 
 ```bash
 pip install halmos==0.3.3
 make prove THREADS=8   # token, bridged-token and tiered-authority proofs  (~3.5 min; ~9 min on two cores)
-make mutate THREADS=8  # 54 injected bugs, each must yield a counterexample (~27 min; ~2 h on two cores; CI runs six shards in parallel)
+make mutate THREADS=8  # 55 injected bugs, each must yield a counterexample (~27 min; ~2 h on two cores; CI runs six shards in parallel)
 make timing         # how long they took and how many cores they had and used (see "Timing" below)
 ```
 
@@ -263,15 +265,15 @@ Both targets pass `--solver-threads` to Halmos, set by default to the cores this
 
 | Check | Where | Count | Run with |
 |---|---|---:|---|
-| Unit tests: quorum, enforcement semantics, custody list, SMT | `test/Security.t.sol` | 18 | `make test` |
-| Unit tests: tiered authority | `test/Tiered.t.sol` | 26 | `make test` |
+| Unit tests: quorum, enforcement semantics, custody list, SMT | `test/Security.t.sol` | 19 | `make test` |
+| Unit tests: tiered authority | `test/Tiered.t.sol` | 27 | `make test` |
 | Two-chain tests: bridging and propagation | `test/Bridge.t.sol` | 17 | `make test` |
 | Stateful invariant fuzzing (256 runs × depth 64) | `test/Invariants.t.sol` | 5 invariants | `make test` |
 | Ingestion tool tests | `scripts/tests/test_sanctions_ingest.py` | 25 | `make tools` |
 | Ingestion demo executed on-chain | `test/Ingest.t.sol` | 2 | `make ingest` |
 | Gas benchmarks | `test/Bench.t.sol` | 7 scenarios | `make bench` |
 | Symbolic proofs: token / bridged token / tiered authority | `test/Halmos.t.sol`, `BridgedHalmos.t.sol`, `TieredHalmos.t.sol` | 13 / 16 / 10 | `make prove` |
-| Non-vacuity: injected bugs that must each yield a counterexample | `scripts/mutation_check.py` | 54 (17 / 12 / 25) | `make mutate` |
+| Non-vacuity: injected bugs that must each yield a counterexample | `scripts/mutation_check.py` | 55 (18 / 12 / 25) | `make mutate` |
 
 Forge and Halmos print a pass or fail line per test and check, and the mutation check one `KILLED` or `SURVIVED` line per bug and a final `k/n mutants killed`; in CI these are the job logs. The measured outputs are files, described next.
 
@@ -377,7 +379,7 @@ Each target can be run on its own. Times are indicative, for a two-core machine;
 
 | Command | What it does | Writes | Expected output | Time |
 |---|---|---|---|---|
-| `make test` | unit tests and invariant fuzzing | — | `66 tests passed, 0 failed` | < 1 min |
+| `make test` | unit tests and invariant fuzzing | — | `68 tests passed, 0 failed` | < 1 min |
 | `make tools` | ingestion-tool tests (starts a local anvil node) | — | `Ran 25 tests` … `OK` | seconds |
 | `make ingest` | regenerates the ingestion demo and executes it on-chain | `data/ingest/` | `2 passed`; batch gas such as `15076846` | seconds |
 | `make bench` | gas benchmarks | `results/*.csv` | `7 passed` | < 1 min |
@@ -385,7 +387,7 @@ Each target can be run on its own. Times are indicative, for a two-core machine;
 | `make report` | the paper's tables and derived figures from the CSVs | `results/summary.md` | `written to …` | seconds |
 | `make plot` | Figure 2 of the paper | `results/compliance_gas_benchmark.{pdf,png}` | `written to …` | seconds |
 | `make prove` | symbolic proofs | `results/timing/halmos_*.json` | `13 passed`, `16 passed`, `10 passed` | ~9 min (3.5 min) |
-| `make mutate` | non-vacuity check | `results/timing/mutation.json` | `54/54 mutants killed` | ~2 h (27 min) |
+| `make mutate` | non-vacuity check | `results/timing/mutation.json` | `55/55 mutants killed` | ~2 h (27 min) |
 | `make timing` | timing summary of the two above | `results/timing/summary.md`, `caption.tex` | `written to …` | seconds |
 
 `make all` runs `test tools ingest prove mutate bench report timing plot` in that order. To keep a log of the whole run:
@@ -473,7 +475,7 @@ The proofs and mutate jobs also run `make timing`, print the summary in the job 
 - **Hold size.** A hold record stores a `uint96` amount, so a single hold is limited to 2⁹⁶ − 1 base units (the account's aggregate held amount is a `uint120`).
 - **Initial custody list.** The custody accounts set at deployment are emitted as `CustodySet` events but are not part of the hash-chained compliance log; auditors take them from the deployment transaction.
 - **Queued actions survive rotation.** Removing a signer does not invalidate slow-tier actions it already helped to queue; they stay executable after their delay unless the guardians cancel them.
-- **Bridge-limit refill.** As in ERC-7281, a limit refills at `max / 1 day` per second, rounded down, so a limit below 86,400 base units refills only once the full day has passed.
+- **Bridge-limit refill.** As in the ERC-7281 reference implementation, a limit refills at `max / 1 day` per second, rounded down, so a limit below 86,400 base units refills only once the full day has passed.
 - **Measurements** are for one compiler version and setting, on the Ethereum cost schedule, with a pre-funded transfer recipient and uniformly random SMT addresses.
 
 ## Citation

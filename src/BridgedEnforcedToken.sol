@@ -15,11 +15,17 @@ import {EnforcedToken} from "./EnforcedToken.sol";
 ///     recipient is not BLOCKED (FROZEN stays receive-only), and the calling bridge is not BLOCKED, so
 ///     blocking a bridge shuts it in both directions. The minter's primary issuance is unchanged.
 ///   * Each bridge has a minting and a burning limit that refills linearly over DURATION, as in
-///     ERC-7281. Limits are set only by the authority, and every change is logged in the hash chain.
+///     the ERC-7281 reference implementation. Limits are set only by the authority, and every change is logged in the hash chain.
 ///     Lowering a limit (e.g. to 0 for a compromised bridge) is restrictive; raising it is not.
-/// @dev Deviation from ERC-7281: `setLimits` is called by the compliance authority and takes an evidence
-///      hash for the audit log; there is no owner and no lockbox. The bridge-facing `mint`/`burn`
-///      signatures and the limit views match the standard.
+/// @dev Deviations from ERC-7281 (this is the bridge-facing subset, not a full IXERC20):
+///      * `setLimits` is called by the compliance authority and takes an evidence hash for the audit log;
+///        there is no owner, no `setLockbox` and no lockbox. A lockbox wraps an existing token, which
+///        would put the wrapped supply outside this contract's controls, so the design requires native
+///        deployment on every chain.
+///      * `mint` by the `minter` (primary issuance) is not rate-limited; only bridge mints are.
+///      The bridge-facing `mint`/`burn` signatures, the limit views and the `BridgeLimitsSet` event match
+///      the draft. The refill rule (max / 1 day per second, rounded down) follows the ERC-7281 reference
+///      implementation; the draft text does not fix the duration or the rounding.
 contract BridgedEnforcedToken is EnforcedToken {
     uint256 public constant DURATION = 1 days;
 
@@ -39,7 +45,8 @@ contract BridgedEnforcedToken is EnforcedToken {
 
     uint8 internal constant A_LIMITS = 7;
 
-    event BridgeLimitsSet(address indexed bridge, uint256 mintingLimit, uint256 burningLimit);
+    /// Same signature as ERC-7281's event, so ERC-7281-aware indexers recognise it.
+    event BridgeLimitsSet(uint256 mintingLimit, uint256 burningLimit, address indexed bridge);
 
     error NotBridge();
     error LimitExceeded();
@@ -97,7 +104,7 @@ contract BridgedEnforcedToken is EnforcedToken {
         BridgeLimits storage b = _bridges[bridge];
         _change(b.minting, mintingLimit);
         _change(b.burning, burningLimit);
-        emit BridgeLimitsSet(bridge, mintingLimit, burningLimit);
+        emit BridgeLimitsSet(mintingLimit, burningLimit, bridge);
         _log(A_LIMITS, keccak256(abi.encode(bridge, mintingLimit, burningLimit)), evidenceHash);
     }
 
@@ -117,7 +124,7 @@ contract BridgedEnforcedToken is EnforcedToken {
         return _current(_bridges[bridge].burning);
     }
 
-    // ================================================================ limit arithmetic (ERC-7281)
+    // ================================================================ limit arithmetic (ERC-7281 reference implementation)
     /// Available value now: refills linearly at max / DURATION per second, capped at max.
     function _current(Limit memory l) internal view returns (uint256) {
         if (l.current >= l.max) return l.max;
