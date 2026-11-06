@@ -1,0 +1,15 @@
+# Foundry build output
+out/
+cache/
+broadcast/
+
+# Python
+__pycache__/
+*.pyc
+
+# Figures written by `make plot` into results/ (the committed figure lives in docs/)
+results/*.pdf
+results/*.png
+
+# Timing written by scripts/timed.py (`make prove`, `make mutate`, `make timing`): machine-dependent
+results/timing/
