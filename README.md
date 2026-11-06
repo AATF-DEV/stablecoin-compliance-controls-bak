@@ -254,12 +254,12 @@ The Halmos checks make the token's entire storage symbolic, so they quantify ove
 
 ```bash
 pip install halmos==0.3.3
-make prove THREADS=8   # token, bridged-token and tiered-authority proofs  (~3.5 min; ~9 min on two cores)
-make mutate THREADS=8  # 55 injected bugs, each must yield a counterexample (~27 min; ~2 h on two cores; CI runs six shards in parallel)
+make prove THREADS=12  # token, bridged-token and tiered-authority proofs  (~3.5 min; ~9 min on two cores)
+make mutate THREADS=12 # 55 injected bugs, each must yield a counterexample (~27 min; ~2 h on two cores; CI runs six shards in parallel)
 make timing         # how long they took and how many cores they had and used (see "Timing" below)
 ```
 
-Both targets pass `--solver-threads` to Halmos, set by default to the cores this process may use, and record their own timing. The times reported in the paper were measured with `THREADS=8` (`--solver-threads 8`) on a 12-core, 24-thread desktop CPU; use the same setting to compare a run with the paper (see [Timing](#6-timing-of-the-proofs-and-the-mutation-check)). Halmos keeps only about 1.5 cores busy on average, so the setting matters less than the CPU's single-core speed.
+Both targets pass `--solver-threads` to Halmos, set by default to the cores this process may use, and record their own timing. The times reported in the paper were measured with `THREADS=12` (`--solver-threads 12`) on a 12-core, 24-thread desktop CPU; use the same setting to compare a run with the paper (see [Timing](#6-timing-of-the-proofs-and-the-mutation-check)). Halmos keeps only about 1.4 cores busy on average, so the setting matters less than the CPU's single-core speed.
 
 ## What is checked
 
@@ -375,7 +375,7 @@ make build                                       # "Compiler run successful"
 
 ### 3. Run everything and collect the results
 
-Each target can be run on its own. Times are indicative, for a two-core machine; for `make prove` and `make mutate` the time with `THREADS=8` on the paper's 12-core, 24-thread machine is given in parentheses. Both measure and record their own (step 6).
+Each target can be run on its own. Times are indicative, for a two-core machine; for `make prove` and `make mutate` the time with `THREADS=12` on the paper's 12-core, 24-thread machine is given in parentheses. Both measure and record their own (step 6).
 
 | Command | What it does | Writes | Expected output | Time |
 |---|---|---|---|---|
@@ -439,11 +439,11 @@ make mutate THREADS=4 SHARD=1/6     # one of six shards; timing goes to results/
 make timing
 ```
 
-`make timing` writes `results/timing/summary.md` (one row per run, then each suite's checks from slowest to fastest) and `results/timing/caption.tex`, the sentence for the paper's Halmos table. For the run reported in the paper (`make prove THREADS=8` and `make mutate THREADS=8`, AMD Ryzen 9 9900X, 12 cores and 24 threads, WSL2) it reads:
+`make timing` writes `results/timing/summary.md` (one row per run, then each suite's checks from slowest to fastest) and `results/timing/caption.tex`, the sentence for the paper's Halmos table. For the run reported in the paper (`make all THREADS=12`, AMD Ryzen 9 9900X, 12 cores and 24 threads, WSL2) it reads:
 
-> All pass; wall-clock times: token 13 checks in 18.6 s, bridged token 16 checks in 30.8 s, tiered authority 10 checks in 150 s (24 cores available, 1.5 in use on average, `--solver-threads 8`, Halmos 0.3.3).
+> All pass; wall-clock times: token 13 checks in 18.1 s, bridged token 16 checks in 31.2 s, tiered authority 10 checks in 159 s (24 cores available, 1.4 in use on average, `--solver-threads 12`, Halmos 0.3.3).
 
-The mutation check took 26.8 min wall-clock and 1.7 h CPU time in that run (3.9 cores in use on average). Timing is not part of `make reproduce`, and `results/timing/` is git-ignored.
+The mutation check (55 mutants) took 26.5 min wall-clock and 1.9 h CPU time in that run (4.2 cores in use on average). Timing is not part of `make reproduce`, and `results/timing/` is git-ignored.
 
 ### Continuous integration
 
